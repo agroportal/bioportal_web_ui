@@ -382,6 +382,7 @@ fr:
     submit: Soumettre
     type: Type
   check_resolvability:
+    blocked: URL bloquée
     check_resolvability_message_1: 'L''URL est résolvable et supporte les formats
       suivants : %{supported_format}'
     check_resolvability_message_2: 'L''URL est résolvable mais sont contenu n''est

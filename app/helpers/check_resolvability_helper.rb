@@ -1,4 +1,13 @@
+require 'benchmark'
+require 'net/http'
+require 'ssrf_filter'
+require 'timeout'
+require 'uri'
+
 module CheckResolvabilityHelper
+
+  RESOLVABILITY_ALLOWED_PORT_RANGE = 1..65_535
+  RESOLVABILITY_BLOCKED_HOSTNAMES = %w[localhost localhost.localdomain].freeze
 
   def formats_equivalents(format = nil)
     all = {
@@ -42,26 +51,98 @@ module CheckResolvabilityHelper
     { result: result, status: status, allowed_format: supported_format, response_time: response_time, redirections: redirections }
   end
 
+  # Every rejection reports the same opaque message. Saying which check refused a URL
+  # would let a caller read back internal DNS and network layout one request at a time.
+  def check_resolvability_blocked
+    I18n.t('check_resolvability.blocked')
+  end
+
+  def public_resolvability_hostname(uri)
+    uri.hostname.to_s.downcase.delete_suffix('.')
+  end
+
+  def public_resolvability_uri?(uri)
+    return false unless uri.is_a?(URI::HTTP) && SsrfFilter::DEFAULT_SCHEME_WHITELIST.include?(uri.scheme)
+    return false if uri.userinfo
+    return false unless RESOLVABILITY_ALLOWED_PORT_RANGE.cover?(uri.port)
+
+    host = public_resolvability_hostname(uri)
+    return false if host.empty?
+    return false if RESOLVABILITY_BLOCKED_HOSTNAMES.include?(host) || host.end_with?('.localhost')
+
+    # A bare label can resolve through the resolver's search domains onto an intranet host.
+    host.match?(/[.:]/)
+  end
+
+  def public_resolvability_uri(url)
+    raw_url = url.to_s.strip
+    raise ArgumentError, check_resolvability_blocked if raw_url.empty?
+
+    uri = URI.parse(raw_url)
+    raise ArgumentError, check_resolvability_blocked unless public_resolvability_uri?(uri)
+
+    uri
+  rescue URI::Error
+    raise ArgumentError, check_resolvability_blocked
+  end
+
+  def public_resolvability_redirect_uri(uri, location)
+    location = location.to_s.strip
+    raise ArgumentError, check_resolvability_blocked if location.empty?
+
+    joined_uri = begin
+      URI.join(uri, location)
+    rescue URI::Error
+      raise ArgumentError, check_resolvability_blocked
+    end
+
+    public_resolvability_uri(joined_uri.to_s)
+  end
+
+  def resolvability_ssrf_options(format, timeout_seconds)
+    {
+      headers: { 'Accept' => format },
+      # Redirects are followed here rather than by SsrfFilter so that every hop can be
+      # reported, and so that relative locations resolve through URI.join.
+      max_redirects: 0,
+      allow_unfollowed_redirects: true,
+      http_options: {
+        open_timeout: timeout_seconds,
+        read_timeout: timeout_seconds,
+        # Net::HTTP.start proxies from the environment unless told otherwise, which would
+        # connect to the proxy instead of the address SsrfFilter validated and pinned.
+        proxy_from_env: false
+      }
+    }
+  end
+
+  def resolvability_head(uri, format, timeout_seconds)
+    # Guards the DNS lookup, which no Net::HTTP timeout covers.
+    Timeout.timeout(timeout_seconds) do
+      SsrfFilter.head(uri.to_s, resolvability_ssrf_options(format, timeout_seconds))
+    end
+  rescue SsrfFilter::Error
+    raise ArgumentError, check_resolvability_blocked
+  end
+
   def follow_redirection(url, format, timeout_seconds, redirect_limit = resolvability_max_redirections)
-    url = url.strip
-    uri = URI.parse(url)
+    uri = public_resolvability_uri(url)
     response = nil
     redirect_count = 0
     redirections = [uri]
 
     total_time = Benchmark.measure do
       until (!response.nil? && !response.is_a?(Net::HTTPRedirection)) || redirect_count >= redirect_limit
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = (uri.scheme == 'https')
-        http.open_timeout = timeout_seconds
         begin
-          response = Timeout.timeout(timeout_seconds) { http.request_head(uri, 'Accept' => format) }
-        rescue Timeout::Error, Net::OpenTimeout
+          response = resolvability_head(uri, format, timeout_seconds)
+        rescue Timeout::Error
           return resolvability_status('Timeout', [], redirections, result: 0, response_time: timeout_seconds)
         end
 
-        if response.is_a?(Net::HTTPRedirection) && response['location']
-          uri = URI.join(uri, response['location'])
+        if response.is_a?(Net::HTTPRedirection)
+          break if response['location'].to_s.strip.empty?
+
+          uri = public_resolvability_redirect_uri(uri, response['location'])
           redirections << uri
           redirect_count += 1
         end
