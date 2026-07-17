@@ -101,6 +101,10 @@ gem 'countries', '~> 5.7'
 
 # Custom API client
 gem 'ontologies_api_client', git: 'https://github.com/agroportal/ontologies_api_ruby_client.git', branch: 'development'
+
+# SSRF protection for the URI resolvability checker
+gem 'ssrf_filter', '~> 1.5'
+
 # Ruby 2.7.8 pinned gems (to remove when migrating to Ruby >= 3.0)
 
 gem 'ffi', '~> 1.16.3'

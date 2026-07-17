@@ -374,6 +374,7 @@ en:
     submit: Submit
     type: Type
   check_resolvability:
+    blocked: Blocked URL
     check_resolvability_message_1: 'The URL is resolvable and support the following
       formats: %{supported_format}'
     check_resolvability_message_2: 'The URL is resolvable but is not content negotiable,
