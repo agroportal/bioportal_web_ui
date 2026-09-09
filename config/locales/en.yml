@@ -1037,7 +1037,10 @@ en:
     collecting_data: We are still collecting data for %{acronym}
     collecting_data_message: We are still collecting data for %{acronym}
     concepts_browsers:
+      collection_view: Collection view
+      date_view: Date view
       filter: Filter
+      hierarchy_view: Hierarchy view
       label_jump: 'Jump to:'
       missing_roots: Missing roots for %{acronym} (skos:topConceptOf)
       placeholder_jump: Jump to
