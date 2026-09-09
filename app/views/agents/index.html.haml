@@ -11,7 +11,7 @@
   - columns_names = ['name', 'acronym', 'affiliations', 'usages']
   - if session[:user] && session[:user].admin?
     - columns_names << 'actions'
-  = render TableComponent.new(id: 'agents-table', borderless: true, outline: true, paging: true, searching: true, sort_column: '0', server_side: true, ajax_url: '/ajax/agents/list', search_placeholder: t('agents.index.search_placeholder'), columns: columns_names, ordering: false, search: @search) do |t|
+  = render TableComponent.new(id: 'agents-table', borderless: true, outline: true, paging: true, searching: true, sort_column: '0', server_side: true, ajax_url: '/ajax/agents/list', search_placeholder: t('agents.index.search_placeholder'), columns: columns_names, ordering: false, search: @search, page: @page) do |t|
     - t.header do |h|
       - h.th {t("agents.form.name")}
       - h.th {t("agents.form.acronym")}

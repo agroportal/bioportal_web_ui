@@ -9,6 +9,8 @@ class AgentsController < ApplicationController
     # Deep link target for the "browse all agents" action of the site-wide
     # search box; the table itself still filters through /ajax/agents/list.
     @search = params[:search].to_s
+    # /agents?page=14 lands on the 14th page; the table normalises anything else.
+    @page = params[:page].to_i
   end
 
   def details
