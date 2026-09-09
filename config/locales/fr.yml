@@ -1070,7 +1070,10 @@ fr:
     collecting_data: Nous collectons encore des données pour %{acronym}
     collecting_data_message: Nous collectons encore des données pour %{acronym}
     concepts_browsers:
+      collection_view: Vue des collections
+      date_view: Vue des dates
       filter: Filtre
+      hierarchy_view: Vue hiérarchique
       label_jump: 'Aller à :'
       missing_roots: Racines manquantes pour %{acronym} (skos:topConceptOf)
       placeholder_jump: Aller à
