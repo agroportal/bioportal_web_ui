@@ -2,6 +2,8 @@
 
 class TableComponent < ViewComponent::Base
 
+  FIRST_PAGE = 1
+
   renders_one :header, TableRowComponent
   renders_many :rows, TableRowComponent
 
@@ -9,9 +11,12 @@ class TableComponent < ViewComponent::Base
                  small_text: false, outline: false, sort_column: nil,
                  paging: false, searching: false, search_placeholder: nil,
                  no_init_sort: false, server_side: false, ajax_url: nil, columns: [], ordering: true,
-                 show_all: false, search: nil)
+                 show_all: false, search: nil, page: nil)
     super()
     @search = search.to_s
+    # Opting in makes the table deep linkable: it opens on that page and keeps
+    # the ?page= param in sync afterwards. Left out, paging stays URL agnostic.
+    @page = page && [page.to_i, FIRST_PAGE].max
     @id = id
     @stripped = stripped
     @borderless = borderless
