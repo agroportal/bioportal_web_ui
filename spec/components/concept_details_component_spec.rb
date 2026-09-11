@@ -10,6 +10,14 @@ RSpec.describe ConceptDetailsComponent, type: :component do
                         reified_keys: reified_keys, lang: lang)
   end
 
+  # Every row of the Raw block asks the ontology what its property is called,
+  # once a day - so each example starts from an empty cache. The rows read below
+  # carry no name of their own.
+  before do
+    Rails.cache.clear
+    allow(LinkedData::Client::HTTP).to receive(:get).and_return(OpenStruct.new(label: nil))
+  end
+
   # The raw side of the Definitions row holds the same nodes, and is read the
   # same way - but only the rows the caller names, because every other row is
   # full of URIs that are classes and have to stay links.
@@ -100,6 +108,43 @@ RSpec.describe ConceptDetailsComponent, type: :component do
 
     it "names the row after its predicate" do
       expect(definitions.instance_variable_get(:@id)).to eq("raw-definition")
+    end
+  end
+
+  # A raw row is named as BioPortal names it: the property's label in the
+  # ontology - "definition", not "obo_purl:IAO_0000115" - and failing that the
+  # URI's last segment, with no prefix in front of it.
+  describe "row names" do
+    let(:definition_property) { "http://purl.obolibrary.org/obo/IAO_0000115" }
+    let(:synonym_property) { "http://www.geneontology.org/formats/oboInOwl#hasExactSynonym" }
+
+    def row_name(property = definition_property)
+      rendered = render_inline(
+        described_class.new(id: "concept-details", acronym: "PO", concept_id: concept, bottom_keys: %w[subClassOf],
+                            properties: OpenStruct.new(property => ["An anatomical entity."]))
+      )
+      rendered.css("th").first.text.strip
+    end
+
+    it "is the property's label in the ontology the resource belongs to" do
+      expect(LinkedData::Client::HTTP).to receive(:get)
+        .with("/ontologies/PO/properties/#{CGI.escape(definition_property)}/label")
+        .and_return(OpenStruct.new(label: "definition"))
+
+      expect(row_name).to eq("definition")
+    end
+
+    # A property an imported vocabulary defines is labelled nowhere in this
+    # submission, and the URI's last segment is then all there is to read.
+    it "is the URI's last segment when the ontology labels the property nowhere" do
+      expect(row_name).to eq("IAO_0000115")
+      expect(row_name(synonym_property)).to eq("hasExactSynonym")
+    end
+
+    it "is the URI's last segment when the lookup fails" do
+      allow(LinkedData::Client::HTTP).to receive(:get).and_raise(StandardError)
+
+      expect(row_name).to eq("IAO_0000115")
     end
   end
 end
