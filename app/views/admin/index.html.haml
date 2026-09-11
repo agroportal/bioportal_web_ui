@@ -34,7 +34,7 @@
       - t.item_content do
         = render TurboFrameComponent.new(id: 'categories-list', src: admin_categories_path, loading: 'lazy')
       - t.item_content do
-        = render TurboFrameComponent.new(id: 'agents-list', src: admin_agents_path, loading: 'lazy')
+        = render TurboFrameComponent.new(id: 'agents-list', src: admin_agents_path(page: params[:page]), loading: 'lazy')
       - t.item_content do
         = render TurboFrameComponent.new(id: 'search-admin', src: '/admin/search', loading: 'lazy')
       - if sparql_enabled?

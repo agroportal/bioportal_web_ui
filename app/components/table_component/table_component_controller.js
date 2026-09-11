@@ -108,26 +108,40 @@
     // Mirrors the current page back into the URL so it stays copy-pasteable,
     // which is also how a reader jumps ahead: edit ?page= in the address bar.
     #trackPageInUrl() {
-      // A page number typed past the end returns no row: fall back to the last one.
-      this.table.one('draw', () => {
-        const { page, pages } = this.table.page.info()
+      this.table.on('draw', () => this.#writePageParam())
 
-        if (pages > 0 && page >= pages) {
-          this.table.page(toPageIndex(pages)).draw('page')
-        }
-      })
+      // Server-side rows arrive with the first ajax response. Client-side ones
+      // were drawn inside the DataTable constructor, before any listener existed.
+      if (this.serverSideValue) {
+        this.table.one('draw', () => this.#clampToLastPage())
+        return
+      }
 
-      this.table.on('draw', () => {
-        const number = toPageNumber(this.table.page.info().page)
-        const url = new URL(window.location)
+      this.#clampToLastPage()
+      this.#writePageParam()
+    }
 
-        if (number === FIRST_PAGE) {
-          url.searchParams.delete(PAGE_PARAM)
-        } else {
-          url.searchParams.set(PAGE_PARAM, number)
-        }
+    // A page number typed past the end lands on the last page.
+    #clampToLastPage() {
+      const { pages } = this.table.page.info()
 
-        window.history.replaceState({}, '', url)
-      })
+      if (pages > 0 && toPageIndex(this.pageValue) >= pages) {
+        this.table.page(toPageIndex(pages)).draw('page')
+      }
+    }
+
+    #writePageParam() {
+      const number = toPageNumber(this.table.page.info().page)
+      const url = new URL(window.location)
+
+      if (number === FIRST_PAGE) {
+        url.searchParams.delete(PAGE_PARAM)
+      } else {
+        url.searchParams.set(PAGE_PARAM, number)
+      }
+
+      // Drops Turbo's restore marker on purpose: with Drive off, Back must not
+      // trigger a Turbo render of this page.
+      window.history.replaceState({}, '', url)
     }
   }
