@@ -11,6 +11,12 @@ class ConceptDetailsComponent < ViewComponent::Base
 
   attr_reader :concept_properties
 
+  # How long a property's label is held for. The API answers this lookup with
+  # max-age=86400 and no Last-Modified, and the client's own cache stores only
+  # what carries one - so the answer is kept here instead. A class page reads a
+  # dozen properties and would otherwise pay a request for each, every view.
+  PROPERTY_LABEL_TTL = 1.day
+
   # +reified_keys+ names the rows that hold reified nodes - the raw side of what
   # the Definitions row shows - and are read the same way there as here.
   # +lang+ is the content language those nodes are resolved in.
@@ -48,7 +54,7 @@ class ConceptDetailsComponent < ViewComponent::Base
 
       values = data[:values]
       url = data[:key]
-      th = { th: content_tag(:span, remove_owl_notation(key), title: url, 'data-controller': 'tooltip') }
+      th = { th: content_tag(:span, row_name(url), title: url, 'data-controller': 'tooltip') }
 
       if reified_row?(url) && !block_given?
         definitions = definitions_component(values, url, ontology_acronym)
@@ -201,16 +207,7 @@ class ConceptDetailsComponent < ViewComponent::Base
       # Shorten the key into a simple label
       k = key.to_s if key.kind_of?(Symbol)
       k ||= key
-      label = key
-      if k.start_with?("http")
-        label = LinkedData::Client::HTTP.get("/ontologies/#{@ontology.acronym}/properties/#{CGI.escape(k)}/label").label rescue ""
-        if label.nil? || label.empty?
-          k = k.gsub(/.*#/, '') # greedy regex replace everything up to last '#'
-          k = k.gsub(/.*\//, '') # greedy regex replace everything up to last '/'
-          # That might take care of nearly everything to be shortened.
-          label = k
-        end
-      end
+      label = k.start_with?("http") ? link_last_part(k) : key
       begin
         # Try to simplify the property values, when they are a struct.
         if properties[key].is_a?(OpenStruct)
@@ -226,6 +223,26 @@ class ConceptDetailsComponent < ViewComponent::Base
       properties_data[label] = data
     end
     return properties_data
+  end
+
+  # What a raw row is called, named as BioPortal names it: the ontology's own
+  # label for the property - "definition", not "IAO_0000115" - and failing that
+  # the URI's last segment, with no prefix in front of it.
+  def row_name(uri)
+    predicate = uri.to_s
+    property_label(predicate) || link_last_part(predicate)
+  end
+
+  # Nil unless the ontology labels the property: one an imported vocabulary
+  # defines is labelled nowhere in the submission, and a lookup the API cannot
+  # answer must cost the row its name and not the page.
+  def property_label(uri)
+    Rails.cache.fetch(["property_label", @acronym, uri], expires_in: PROPERTY_LABEL_TTL) do
+      LinkedData::Client::HTTP.get("/ontologies/#{@acronym}/properties/#{CGI.escape(uri)}/label").label.presence
+    end
+  rescue StandardError => e
+    Rails.logger.warn("Property label lookup failed for #{uri} in #{@acronym}: #{e.message}")
+    nil
   end
 
   def exclude_relation?(relation_to_check, ontology = nil)
@@ -244,22 +261,6 @@ class ConceptDetailsComponent < ViewComponent::Base
       return true if relation_to_check.is_a?(Array) && relation_to_check.include?(relation)
     end
     return false
-  end
-
-  def remove_owl_notation(string)
-    # TODO_REV: No OWL notation, but should we modify the IRI?
-    return string
-
-    unless string.nil?
-      strings = string.split(":")
-      if strings.size < 2
-        # return string.titleize
-        return string
-      else
-        # return strings[1].titleize
-        return strings[1]
-      end
-    end
   end
 
   def convert_dates(hash)
