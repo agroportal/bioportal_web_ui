@@ -9,6 +9,12 @@ module SubmissionFilter
 
   ONTOLOGY_FORMATS = %w[OBO OWL SKOS UMLS XLSX].freeze
 
+  RETIRED_STATUS = 'retired'
+
+  # Browse has two states only: retired ontologies are hidden, or shown alone.
+  RETIRED_HIDDEN = :hidden
+  RETIRED_ONLY = :only
+
   def init_filters(params)
     @show_views = params[:show_views]&.eql?('true')
     @show_private_only = params[:private_only]&.eql?('true')
@@ -39,7 +45,7 @@ module SubmissionFilter
     @total_ontologies = @ontologies.size
 
     params = { query: @search,
-               status: request_params[:status],
+               retired: request_params[:retired],
                show_views: @show_views,
                private_only: @show_private_only,
                user_ontologies_only: @user_ontologies_only,
@@ -84,7 +90,7 @@ module SubmissionFilter
   end
 
 
-  def filter_submissions(ontologies, query:, status:, show_views:, private_only:, public_only: false, user_ontologies_only: false, languages:, page_size:, formality_level:, is_of_type:, groups:, categories:, formats:, user: false)
+  def filter_submissions(ontologies, query:, retired:, show_views:, private_only:, public_only: false, user_ontologies_only: false, languages:, page_size:, formality_level:, is_of_type:, groups:, categories:, formats:, user: false)
     if user
       # Getting only the submission of the logged in user
       submissions = LinkedData::Client::Models::OntologySubmission.all(acronym: ontologies.map { |o| o[:acronym] }.join('|'), include: BROWSE_ATTRIBUTES.join(','), include_status: "ANY", also_include_views: true, display_links: false, display_context: false)    
@@ -104,7 +110,7 @@ module SubmissionFilter
       out &&= s[:ontology].administeredBy.include?(current_user.id) if user_ontologies_only
       out &&= (groups.blank? || (s[:ontology].group.map { |x| helpers.link_last_part(x) } & groups.split(',')).any?)
       out &&= (categories.blank? || (s[:ontology].hasDomain.map { |x| helpers.link_last_part(x) } & categories.split(',')).any?)
-      out &&= (status.blank? || status.eql?('alpha,beta,production,retired') || status.split(',').include?(s[:status]))
+      out &&= status_visible?(s[:status], retired)
       out &&= (formats.blank? || formats.split(',').any? { |f| s[:hasOntologyLanguage].eql?(f) })
       out &&= (is_of_type.blank? || is_of_type.split(',').any? { |f| helpers.link_last_part(s[:isOfType]).eql?(f) })
       out &&= (formality_level.blank? || formality_level.split(',').any? { |f| helpers.link_last_part(s[:hasFormalityLevel]).eql?(f) })
@@ -130,6 +136,16 @@ module SubmissionFilter
       end
 
     end.compact
+  end
+
+  # Filter on the retired status alone rather than on a whitelist of known ones:
+  # an ontology whose submission failed to parse carries no status at all, and
+  # values outside the enum do get stored, so a whitelist left both unreachable
+  # through every filter combination. See issue #1202.
+  def status_visible?(status, retired)
+    is_retired = status.to_s.eql?(RETIRED_STATUS)
+
+    retired.eql?(RETIRED_ONLY) ? is_retired : !is_retired
   end
 
   def paginate_submissions(all_submissions, page, size)
@@ -187,8 +203,7 @@ module SubmissionFilter
       show_views: { api_key: :also_include_views, default: 'true' },
       public_only: { api_key: :viewingRestriction, default: 'public' },
       user_ontologies_only: { api_key: :administeredBy, default: 'true' },
-      private_only: { api_key: :viewingRestriction, default: 'private' },
-      show_retired: { api_key: :status, default: 'retired' }
+      private_only: { api_key: :viewingRestriction, default: 'private' }
     }
     @filters = {}
 
@@ -200,9 +215,9 @@ module SubmissionFilter
     end
 
     if params[:show_retired].blank?
-      request_params[:status] = 'alpha,beta,production'
+      request_params[:retired] = RETIRED_HIDDEN
     else
-      request_params[:status] = 'retired'
+      request_params[:retired] = RETIRED_ONLY
       @filters[:show_retired] = 'true'
     end
 

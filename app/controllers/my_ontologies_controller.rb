@@ -76,7 +76,7 @@ class MyOntologiesController < ApplicationController
   def build_filter_options(request_params)
     {
       query: @search,
-      status: request_params[:status],
+      retired: request_params[:retired],
       show_views: @show_views,
       public_only: @show_public_only,
       private_only: @show_private_only,
